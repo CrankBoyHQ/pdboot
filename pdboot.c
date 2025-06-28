@@ -36,14 +36,18 @@ extern char __text_start__, __data_end__;
 
 #define BOOT_SIZE ((uintptr_t)(&__data_end__ - &__text_start__))
 
-__pdbcall
 __attribute__((naked))
 void enter(void)
 {
+    #define $ "\n\t"
     __asm volatile (
-        "ldr r0, [sp, #0]  \n\t"
-        "bx r3             \n\t"
+        "push {lr, r0-r9}"$
+        "ldr r0, [sp, #44]"$
+        "blx r3"$
+        "pop {lr, r0-r9}"$
+        "bx lr"$
     );
+    #undef $
 }
 
 __pdbcall
@@ -128,14 +132,17 @@ static int bootstrap(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
     }
     
     // read file in 256-byte chunks
-    while (data_len > 0)
     {
-        int to_read = data_len;
-        if (to_read >= sizeof(bbuff)) to_read = sizeof(bbuff);
-        
-        saferead(playdate, file, data, to_read);
-        data_len -= to_read;
-        data += to_read;
+        char* _data = data;
+        while (data_len > 0)
+        {
+            int to_read = data_len;
+            if (to_read >= sizeof(bbuff)) to_read = sizeof(bbuff);
+            
+            saferead(playdate, file, _data, to_read);
+            data_len -= to_read;
+            _data += to_read;
+        }
     }
     
     playdate->system->logToConsole(
@@ -164,7 +171,7 @@ static int bootstrap(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
                     uint32_t reloc_addr;
                     saferead(playdate, file, &reloc_addr, sizeof(reloc_addr));
                     
-                    uint32_t* reloc = (void*)(((char*)SEGMENT_START) + reloc_addr);
+                    uint32_t* reloc = (void*)(data + reloc_addr);
                     
                     *reloc += SEGMENT_START;
                 }
@@ -246,6 +253,7 @@ int eventHandlerShim(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
     {
         asm ("nop");
     }
+
     
     // this HAS to tail-call
     return bootstrap(playdate, event, arg);
