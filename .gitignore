@@ -1,0 +1,12 @@
+*.pdx
+build/
+CMakeCache.txt
+CMakeFiles
+cmake_install.cmake
+*.so
+*.dylib
+*.dll
+*.elf
+*.a
+*.pdb
+syms*.txt
