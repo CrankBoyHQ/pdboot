@@ -8,6 +8,11 @@ SECTIONS
 		__text_start__ = .;
 		
 		*(.entry)
+		*(.reserved)
+		
+		__boot_start__ = .;
+		
+		*(.boot)
 		
 		*(.text)
 		*(.text.*)

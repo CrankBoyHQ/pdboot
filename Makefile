@@ -14,7 +14,7 @@ endif
 
 override SRC = pdboot.c
 
-UDEFS = -DHEAP_SIZE=$(HEAP_SIZE) -fPIE -pie -fno-plt
+UDEFS = -DHEAP_SIZE=$(HEAP_SIZE)
 
 # Define ASM defines here
 UADEFS =

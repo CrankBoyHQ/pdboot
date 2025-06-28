@@ -10,6 +10,7 @@
 
 #define MEM_SIZE 16000000
 
+__attribute__((section(".reserved")))
 volatile char reserved[MEM_SIZE - HEAP_SIZE];
 
 int update(void* ud)
@@ -30,12 +31,13 @@ int eventHandler(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
 // force relative jumping/calling
 #define __pdbcall __attribute__((short_call))
 
-extern char __text_start__, __data_end__;
+extern char __text_start__, __boot_start__, __data_end__;
 
 #define SEGMENT_START (((uintptr_t)&__text_start__) & 0xFF000000)
 
-#define BOOT_SIZE ((uintptr_t)(&__data_end__ - &__text_start__))
+#define BOOT_SIZE ((uintptr_t)(&__data_end__ - &__boot_start__))
 
+__attribute__((section(".boot")))
 __attribute__((naked))
 void enter(void)
 {
@@ -75,10 +77,27 @@ void enter(void)
         "mov r0, r4"$
         "blx r3"$
         
+        // wait
+        //"ldr r0, [sp, #68]"$
+        //"blx r0"$
+        
     "pop {lr, r0-r9}"$
-    "bx lr"$
+    
+    "ldr r3, [sp, #4]"$ // pdb
+    "orr r3, r3, #1"$
+    "bx r3"$
     );
     #undef $
+}
+
+__pdbcall
+static void wait(void)
+{
+    // wait a bit to flush the console
+    for (int i = 0; i < 1600000; ++i)
+    {
+        asm ("nop");
+    }
 }
 
 __pdbcall
@@ -115,11 +134,7 @@ static int bootstrap(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
         string, string
     );
         
-    // wait a bit to flush the console
-    for (int i = 0; i < 1600000; ++i)
-    {
-        asm ("nop");
-    }
+    wait();
     
     int (*targetEntrypoint)(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg) = (void*)(SEGMENT_START | 1);
     
@@ -164,14 +179,15 @@ static int bootstrap(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
     
     // read file in 256-byte chunks
     {
+        unsigned len = data_len;
         char* _data = data;
-        while (data_len > 0)
+        while (len > 0)
         {
-            int to_read = data_len;
+            int to_read = len;
             if (to_read >= sizeof(bbuff)) to_read = sizeof(bbuff);
             
             saferead(playdate, file, _data, to_read);
-            data_len -= to_read;
+            len -= to_read;
             _data += to_read;
         }
     }
@@ -224,30 +240,25 @@ done:
         : &_buff[0];
     
     // wait a bit to flush the console
-    for (int i = 0; i < 1600000; ++i)
-    {
-        asm ("nop");
-    }
+    wait();
     
-    memcpy(buff, &__text_start__, BOOT_SIZE);
+    memcpy(buff, &__boot_start__, BOOT_SIZE);
     
     int (*stack_enter)(
         // r0-r3
         PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg, void* fn_log,
         
         // stack-allocated args
-        const char* msg, void* segment_start, void* pdb, size_t len, void* fn_realloc, void* fn_clearICache
-    ) = (void*)((uintptr_t)(void*)&enter - (uintptr_t)(void*)&__text_start__ + (uintptr_t)(void*)buff);
+        const char* msg, void* segment_start, void* pdb, size_t len, void* fn_realloc, void* fn_clearICache,
+        void* wait
+    ) = (void*)((uintptr_t)(void*)&enter - (uintptr_t)(void*)&__boot_start__ + (uintptr_t)(void*)buff);
     
     playdate->system->logToConsole("Enter: %p", stack_enter);
     
     // wait a bit to flush the console
-    for (int i = 0; i < 1600000; ++i)
-    {
-        asm ("nop");
-    }
+    wait();
     
-    return stack_enter(playdate, event, arg, playdate->system->logToConsole, "Entering " APPNAME "...", (void*)SEGMENT_START, data, data_len, playdate->system->realloc, playdate->system->clearICache);
+    return stack_enter(playdate, event, arg, playdate->system->logToConsole, "---- Entering " APPNAME " ----", (void*)SEGMENT_START, data, data_len, playdate->system->realloc, playdate->system->clearICache, wait);
 }
 
 // very short entrypoint function that pre-empts the eventHandlerShim.
@@ -280,11 +291,7 @@ int eventHandlerShim(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
     reserved[sizeof(reserved) - 1] = 0;
     
     // wait a bit to flush the console
-    for (int i = 0; i < 1600000; ++i)
-    {
-        asm ("nop");
-    }
-
+    wait();
     
     // this HAS to tail-call
     return bootstrap(playdate, event, arg);

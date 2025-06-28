@@ -136,7 +136,9 @@ def get_reloc_type(type_val):
     """Convert relocation type number to human-readable name"""
     arm_relocs = {
         2: "R_ARM_ABS32",
+        3: "R_ARM_REL32",
         10: "R_ARM_THM_CALL",
+        25: "R_ARM_BASE_PREL",
         30: "R_ARM_THM_JUMP24",
         38: "R_ARM_TARGET1",
     }
