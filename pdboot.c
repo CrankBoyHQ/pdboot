@@ -41,11 +41,42 @@ void enter(void)
 {
     #define $ "\n\t"
     __asm volatile (
-        "push {lr, r0-r9}"$
-        "ldr r0, [sp, #44]"$
+    "push {lr, r0-r9}"$
+        "ldr r4, [sp, #44]"$ // msg
+        "ldr r5, [sp, #48]"$ // segment start
+        "ldr r6, [sp, #52]"$ // pdb
+        "ldr r7, [sp, #56]"$ // len
+        "ldr r8, [sp, #60]"$ // realloc
+        "ldr r9, [sp, #64]"$ // clearICache
+        
+        "mov r0, r6"$
+        
+    "loop_start:"$
+        "cmp     r7, #0"$
+        "beq     loop_end"$
+
+        "ldrb    r1, [r6], #1"$ // Load byte from [r6++]
+        "strb    r1, [r5], #1"$ // Store byte to [r5++]
+        
+        "subs    r7, r7, #1"$ // r7--
+        "b       loop_start"$
+
+    "loop_end:"$
+    
+        // FIXME: why does this crash?
+        // free pdb
+        //"mov r1, #0"$
+        //"blx r8"$
+        
+        // clear icache
+        "blx r9"$
+        
+        // print message
+        "mov r0, r4"$
         "blx r3"$
-        "pop {lr, r0-r9}"$
-        "bx lr"$
+        
+    "pop {lr, r0-r9}"$
+    "bx lr"$
     );
     #undef $
 }
