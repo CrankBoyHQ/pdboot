@@ -3,6 +3,7 @@ build/
 CMakeCache.txt
 CMakeFiles
 cmake_install.cmake
+*.o
 *.so
 *.dylib
 *.dll
@@ -10,3 +11,4 @@ cmake_install.cmake
 *.a
 *.pdb
 syms*.txt
+disasm*.txt
