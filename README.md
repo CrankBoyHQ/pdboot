@@ -6,6 +6,7 @@ A simple boot shim that merely launches another playdate application. This can b
 
 - Only works with Pure-C playdate games. Cannot load Lua games.
 - The launched playdate application must be specially compiled, and built separately for rev A and rev B devices.
+- Heap size must be specified in advance. This forces a limit on the size of the program to be loaded.
 
 ## How to use:
 
