@@ -8,6 +8,9 @@ import traceback
 MAGIC = b'\xAAPDBoot\x01'
 VERSION = 1
 
+R_ARM_ABS32 = 2
+R_ARM_TARGET1 = 38
+
 def get_section_addresses(elf):
     print("=== Section Load Addresses ===")
     sections = {
@@ -105,9 +108,7 @@ def elf2bin(elf_path, bin_path, apply_offset):
                                 sec = elf.get_section(sec_idx)
                                 print(f"0x{reloc['r_offset']:08x}   {get_reloc_type(reloc_type):<14}   B(S)={sec.name}({sec_addrs[sec.name]:08x}) + S={sym_value:08x} A={addend:08x} {name}")
                                 
-                                # of the four relocation types used, this is the only one which needs handling at run-time
-                                if reloc_type == 2:
-                                    relocations.append((reloc_type, reloc['r_offset'], sym_value, addend))
+                                relocations.append((reloc_type, reloc['r_offset'], sym_value, addend))
                         except Exception as e:
                             print(f"0x{reloc['r_offset']:08x}   {get_reloc_type(reloc_type):<14}   UNKNOWN_SYMBOL_{sym_idx} (error: {str(e)})")
                             traceback.print_exc()
@@ -122,7 +123,7 @@ def elf2bin(elf_path, bin_path, apply_offset):
         # abs32 relocations
         for reloc in relocations:
             reloc_type, r_offset, sym_value, addend = reloc
-            if reloc_type == 2: # R_ARM_ABS32
+            if reloc_type in [R_ARM_ABS32, R_ARM_TARGET1]:
                 
                 # seek to r_offset in binary file, then add `apply_offset` to the 32-bit value there.
                 bin_file.seek(r_offset)
@@ -132,6 +133,7 @@ def elf2bin(elf_path, bin_path, apply_offset):
                 print(f"Applying offset at 0x{r_offset:08x}: 0x{val:08x} -> 0x{newval:08x}")
                 bin_file.seek(r_offset)
                 bin_file.write(newval.to_bytes(4, byteorder='little'))
+                    
     
     
         # remove any trailing 0s
@@ -156,12 +158,12 @@ used = set()
 def get_reloc_type(type_val):
     """Convert relocation type number to human-readable name"""
     arm_relocs = {
-        2: "R_ARM_ABS32",
+        R_ARM_ABS32: "R_ARM_ABS32",
         3: "R_ARM_REL32",
         10: "R_ARM_THM_CALL",
         25: "R_ARM_BASE_PREL",
         30: "R_ARM_THM_JUMP24",
-        38: "R_ARM_TARGET1",
+        R_ARM_TARGET1: "R_ARM_TARGET1",
     }
     
     used.add(type_val)
