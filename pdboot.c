@@ -298,18 +298,18 @@ int pdboot_main(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
 
     // paranoia: force compiler to include this
     reserved[sizeof(reserved) - 1] = 1;
-
-    SDFile* file = playdate->file->open(APPNAME, kFileRead);
+    
+    SDFile* file = playdate->file->open(APPNAME, kFileReadData);
     if (file)
     {
-        playdate->system->logToConsole("Launching %s from pdx...", APPNAME);
+        playdate->system->logToConsole("Launching %s from data...", APPNAME);
     }
     else
     {
-        SDFile* file = playdate->file->open(APPNAME, kFileReadData);
+        SDFile* file = playdate->file->open(APPNAME, kFileRead);
         if (file)
         {
-            playdate->system->logToConsole("Launching %s from data...", APPNAME);
+            playdate->system->logToConsole("Launching %s from pdx...", APPNAME);
         }
         else
         {
