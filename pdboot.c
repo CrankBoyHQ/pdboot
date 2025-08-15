@@ -14,9 +14,11 @@
 
 #define MEM_SIZE 16000000
 
+#ifndef TARGET_SIMULATOR
 // reserve space for loaded binary
 __attribute__((section(".reserved")))
 volatile char reserved[MEM_SIZE - HEAP_SIZE];
+#endif
 
 int update(void* ud)
 {
@@ -71,9 +73,9 @@ static bool select_app(char rev_char)
 {
     char* s = strchr((char*)APPNAME, '@');
     if (!s) return false;
-    
+
     *s = rev_char;
-    
+
     return true;
 }
 
@@ -96,9 +98,9 @@ void read_byte_to_msg(char* msg, void* b)
     uint8_t v = *(uint8_t*)b;
     if ((v&0xF) < 10) msg[1] = '0' + (v&0xF);
     else msg[1] = 'A' + (v&0xF) - 10;
-    
+
     v >>= 4;
-    
+
     if (v < 10) msg[0] = '0' + v;
     else msg[0] = 'A' + v - 10;
     msg[2] = 0;
@@ -127,18 +129,18 @@ void hard_jump_to_entrypoint(
     );
 }
 
-__boot static 
+__boot static
 void bootstrap(
     // r0-r3
     PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg, void* base_addr,
-        
+
     // stack-allocated args
     char* buff, size_t size, wait_t wait,
     pdboot_data_t* data
 )
 {
     char msg[9];
-    
+
     msg[0] = 'H';
     msg[1] = 'e';
     msg[2] = 'l';
@@ -148,25 +150,25 @@ void bootstrap(
     msg[6] = '\0';
     playdate->system->logToConsole(msg);
     wait();
-    
+
     // copy pdb into memory
     for (size_t i = 0; i < size; ++i)
     {
         ((char*)base_addr)[i] = buff[i];
     }
-    
+
     // zero bss
     for (size_t i = size; i < MEM_SIZE - HEAP_SIZE; ++i)
     {
         ((char*)base_addr)[i] = 0;
     }
-    
+
     playdate->system->logToConsole(msg);
     wait();
-    
+
     playdate->system->realloc(buff, 0);
     playdate->system->clearICache();
-        
+
     playdate->system->logToConsole(msg);
     wait();
 
@@ -232,71 +234,71 @@ int pdboot_main(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
     void* fp = regs[8];
     void* lr = regs[9];
     void* sp = regs[10];
-    
+
     if (event != kEventInit) return 0;
-    
+
     playdate->system->logToConsole(NAME_AND_VERSION "\n");
     playdate->system->logToConsole("PDBoot entrypoint: %p\n", &_entrypoint_);
 
     wait();
-    
+
     if (arg >= 2)
     {
         playdate->system->logToConsole("depth limit exceeded, so stopping things here.");
         return 0;
     }
     arg++;
-    
+
     if (event != kEventInit) return 0;
-    
+
     uintptr_t base_addr = get_base_addr();
-    
+
     playdate->system->logToConsole("LR: %p\nSP: %p\nFP: %p\nBase Address: %x\n", lr, sp, fp, base_addr);
-    
+
     int rev = get_rev(base_addr);
-    
+
     if (rev == REV_UNKNOWN)
     {
         playdate->system->error("Unrecognized hardware. PDBoot only supports Rev A and Rev B devices.");
         return 0;
     }
-    
+
     char rev_char = REV_CHAR[rev];
-    
+
     playdate->system->logToConsole("Rev %c detected", rev_char);
-    
+
     if (!select_app(rev_char))
     {
         playdate->system->error("Failed to find wildcard '@' in appname \"%s\"", APPNAME);
         return 0;
     }
-    
+
     // copy bootstrap to safe-execute region.
     // (It just so happens that the frame buffer itself is safe to execute from.)
     uint8_t* bs_region = playdate->graphics->getFrame();
-    
+
     pdboot_data_t* data = (void*)bs_region;
     bs_region += sizeof(*data);
     strcpy(data->magic, PDBOOT_MAGIC);
     strcpy(data->name_and_version, NAME_AND_VERSION);
     data->version_major = PDB_VERSION_MAJOR;
     data->version_minor = PDB_VERSION_MINOR;
-    
+
     memcpy(data->regs, regs, sizeof(data->regs));
     data->entrypoint = &_entrypoint_;
-    
+
     // align % 2
     while ((uintptr_t)bs_region % 2) ++bs_region;
-    
+
     playdate->system->logToConsole("Copying shim to %p", bs_region);
-    
+
     memcpy(bs_region, &__boot_start__, BOOT_SIZE);
-    
+
     wait();
-    
+
     // paranoia: force compiler to include this
     reserved[sizeof(reserved) - 1] = 1;
-    
+
     SDFile* file = playdate->file->open(APPNAME, kFileRead);
     if (file)
     {
@@ -315,11 +317,11 @@ int pdboot_main(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
             return 0;
         }
     }
-    
+
     // copy file contents to buffer
     size_t size = 0;
     char* buff = read_entire_file(playdate, file, &size, MEM_SIZE - HEAP_SIZE);
-    
+
     if (!buff || !size)
     {
         if (size > MEM_SIZE - HEAP_SIZE)
@@ -329,16 +331,16 @@ int pdboot_main(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
         playdate->system->error("[Error] unable to read pdb file.");
         return 0;
     }
-    
+
     void (*bootstrap_shim)(
         // r0-r3
         PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg, void* base_addr,
-        
+
         // stack-allocated args
         char* buff, size_t size, wait_t wait,
         void* data
     ) = (void*)((uintptr_t)(void*)&bootstrap - (uintptr_t)(void*)&__boot_start__ + (uintptr_t)(void*)bs_region);
-    
+
 
     // (note: doesn't return here)
     bootstrap_shim(
