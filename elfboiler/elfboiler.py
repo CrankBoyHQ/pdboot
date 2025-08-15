@@ -22,7 +22,7 @@ def get_section_addresses(elf):
     
     return sections
 
-def elf2bin(elf_path, bin_path):
+def elf2bin(elf_path, bin_path, apply_offset):
     with open(elf_path, 'rb') as elf_file, open(bin_path, 'wb') as bin_file:
         elf = ELFFile(elf_file)
         
@@ -109,26 +109,43 @@ def elf2bin(elf_path, bin_path):
                             print(f"0x{reloc['r_offset']:08x}   {get_reloc_type(reloc_type):<14}   UNKNOWN_SYMBOL_{sym_idx} (error: {str(e)})")
                             sys.exit(4)
         
-        #header
-        bin_file.write(MAGIC)
-        bin_file.write(struct.pack('<I', VERSION))
-              
         # bin data
-        bin_file.write(struct.pack('<I', len(data)))
         bin_file.write(data)
         
+    print(f"Offset: 0x{apply_offset:08x}")
+        
+    with open(bin_path, 'r+b') as bin_file:
         # abs32 relocations
-        bin_file.write(b'\x02')
-        bin_file.write(struct.pack('<I', len(relocations)))
         for reloc in relocations:
             reloc_type, r_offset, sym_value, addend = reloc
-            if reloc_type == 2:
-                bin_file.write(struct.pack('<I', r_offset))
-        
-        # terminate file
-        bin_file.write(b'\x00')
-        
-    print(f"wrote file to {bin_path}")
+            if reloc_type == 2: # R_ARM_ABS32
+                
+                # seek to r_offset in binary file, then add `apply_offset` to the 32-bit value there.
+                bin_file.seek(r_offset)
+                val_bytes = bin_file.read(4)
+                val = int.from_bytes(val_bytes, byteorder='little', signed=False)
+                newval = (val + apply_offset) & 0xFFFFFFFF
+                print(f"Applying offset at 0x{r_offset:08x}: 0x{val:08x} -> 0x{newval:08x}")
+                bin_file.seek(r_offset)
+                bin_file.write(newval.to_bytes(4, byteorder='little'))
+    
+    
+        # remove any trailing 0s
+        print(f"wrote file to {bin_path}")
+        bin_file.seek(0, 2)  # Seek to end
+        filesize = bin_file.tell()
+        bin_file.seek(0)
+        data = bytearray(bin_file.read())
+    
+    # Find last non-zero byte
+    last_nonzero = len(data)
+    while last_nonzero > 0 and data[last_nonzero-1] == 0:
+        last_nonzero -= 1
+    
+    if last_nonzero < filesize:
+        print(f"Truncating from {filesize} to {last_nonzero} bytes")
+        with open(bin_path, 'wb') as f:
+            f.write(data[:last_nonzero])
 
 used = set()
 
@@ -147,10 +164,10 @@ def get_reloc_type(type_val):
     return arm_relocs.get(type_val, f'UNKNOWN({type_val})')
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} input.elf output.bin")
+    if len(sys.argv) != 4:
+        print(f"Usage: {sys.argv[0]} input.elf output.bin offset")
         sys.exit(1)
     
-    elf2bin(sys.argv[1], sys.argv[2])
+    elf2bin(sys.argv[1], sys.argv[2], int(sys.argv[3], 0))
     
     print("relocation types used: ", [get_reloc_type(e) for e in used])

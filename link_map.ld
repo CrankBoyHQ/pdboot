@@ -8,7 +8,6 @@ SECTIONS
 		__text_start__ = .;
 		
 		*(.entry)
-		*(.reserved)
 		
 		__boot_start__ = .;
 		
@@ -64,6 +63,7 @@ SECTIONS
 		. = ALIGN(32);
 		__bss_start__ = .;
 		*(.bss*)
+		*(.reserved)
 		*(COMMON)
 		*(COM)
 		. = ALIGN(4);

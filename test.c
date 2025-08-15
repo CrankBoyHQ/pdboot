@@ -21,7 +21,7 @@ int eventHandlerShim(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg);
 // entrypoint in pdboot
 __attribute__((section(".entry")))
 __attribute__((naked))
-void _entrypoint_(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
+int _entrypoint_(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
 {
     asm volatile (
         "ldr r3, =eventHandlerShim\n\t"

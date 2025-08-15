@@ -45,18 +45,20 @@ test.o: test.c
 setup.o: $(SDK)/C_API/buildsupport/setup.c
 	$(CC) -c $(MCFLAGS) $(DDEFS) $(INCDIR) $< -o $@
 
-Source/appB.pdb: app.elf
+Source/appB.pdb: appB.elf
 	arm-none-eabi-objcopy \
-    --change-addresses=0x90000000 \
+    --image-base=0x90000000 \
     --input-target=elf32-littlearm \
     --output-target=binary \
-    app.elf \
-    $@
-
-Source/appA.pdb: app.elf
-	arm-none-eabi-objcopy \
-    --change-addresses=0x60000000 \
-    --input-target=elf32-littlearm \
-    --output-target=binary \
-    app.elf \
-    $@
+    $@ \
+    $^
+	
+appB.elf: Source/pdex.elf
+	arm-none-eabi-ld \
+	-T relocateB.ld -o \
+    $@ \
+    $^
+	
+# clean-test, cleans the everything from app.elf to appB.elf
+clean-test:
+	rm -f app.elf test.o setup.o Source/appB.pdb appB.o appB.elf
