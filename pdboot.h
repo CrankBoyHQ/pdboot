@@ -1,4 +1,5 @@
-#pragma once
+#ifndef _PDBOOT_H
+#define _PDBOOT_H
 
 #define PDBOOT_MAGIC "\xAAPDBoot\x01"
 
@@ -20,3 +21,5 @@ typedef struct pdboot_data
     // for internal pdboot use
     void* entrypoint;
 } pdboot_data_t;
+
+#endif
