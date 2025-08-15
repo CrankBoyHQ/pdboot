@@ -139,18 +139,6 @@ void bootstrap(
 {
     char msg[9];
     
-    void* lr = data->regs[9];
-    void* dat = (void*)((uintptr_t)lr & ~1);
-    for (size_t i = 0; i < 8; ++i)
-    {
-        read_byte_to_msg(msg, dat + 0);
-        read_byte_to_msg(msg+2, dat + 1);
-        read_byte_to_msg(msg+4, dat + 2);
-        read_byte_to_msg(msg+6, dat + 3);
-        playdate->system->logToConsole(msg);
-        dat += 4;
-    }
-    
     msg[0] = 'H';
     msg[1] = 'e';
     msg[2] = 'l';
@@ -180,18 +168,6 @@ void bootstrap(
     playdate->system->clearICache();
         
     playdate->system->logToConsole(msg);
-    wait();
-    
-    dat = (void*)((uintptr_t)lr & ~1);
-    for (size_t i = 0; i < 8; ++i)
-    {
-        read_byte_to_msg(msg, dat + 0);
-        read_byte_to_msg(msg+2, dat + 1);
-        read_byte_to_msg(msg+4, dat + 2);
-        read_byte_to_msg(msg+6, dat + 3);
-        playdate->system->logToConsole(msg);
-        dat += 4;
-    }
     wait();
 
     hard_jump_to_entrypoint(playdate, event, arg, data->regs);
