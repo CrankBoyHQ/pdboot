@@ -3,6 +3,7 @@ from elftools.elf.elffile import ELFFile
 from elftools.elf.relocation import RelocationSection
 import sys
 import struct
+import traceback
 
 MAGIC = b'\xAAPDBoot\x01'
 VERSION = 1
@@ -11,14 +12,14 @@ def get_section_addresses(elf):
     print("=== Section Load Addresses ===")
     sections = {
         '.text': None,
+        '.rodata': None,
         '.data': None,
         '.bss': None
     }
     
     for section in elf.iter_sections():
-        if section.name in sections:
-            sections[section.name] = section['sh_addr']
-            print(f"{section.name:8} -> 0x{section['sh_addr']:08x}")
+        sections[section.name] = section['sh_addr']
+        print(f"{section.name:8} -> 0x{section['sh_addr']:08x}")
     
     return sections
 
@@ -62,6 +63,8 @@ def elf2bin(elf_path, bin_path, apply_offset):
                 # Skip debug relocations
                 if section.name.startswith('.rel.debug'):
                     continue
+                
+                print(f"--- {section.name} ----");
                     
                 symbol_table = elf.get_section(section['sh_link'])
                 
@@ -91,22 +94,23 @@ def elf2bin(elf_path, bin_path, apply_offset):
                     else:
                         try:
                             sym = symbol_table.get_symbol(sym_idx)
-                            if sym.name:
-                                # For section references
-                                sec_idx = sym['st_shndx']
-                                sym_value = sym['st_value']
-                                if sec_idx == 'SHN_UNDEF':
-                                    print(f"0x{reloc['r_offset']:08x}   {get_reloc_type(reloc_type):<14}   UNDEFINED_SECTION + 0x{addend:x}")
-                                    sys.exit(3)
-                                else:
-                                    sec = elf.get_section(sec_idx)
-                                    print(f"0x{reloc['r_offset']:08x}   {get_reloc_type(reloc_type):<14}   B(S)={sec.name}({sec_addrs[sec.name]:08x}) + S={sym_value:08x} A={addend:08x} {sym.name}")
-                                    
-                                    # of the four relocation types used, this is the only one which needs handling at run-time
-                                    if reloc_type == 2:
-                                        relocations.append((reloc_type, reloc['r_offset'], sym_value, addend))
+                            name = sym.name if sym.name else "(unnamed)"
+                            # For section references
+                            sec_idx = sym['st_shndx']
+                            sym_value = sym['st_value']
+                            if sec_idx == 'SHN_UNDEF':
+                                print(f"0x{reloc['r_offset']:08x}   {get_reloc_type(reloc_type):<14}   UNDEFINED_SECTION + 0x{addend:x}")
+                                sys.exit(3)
+                            else:
+                                sec = elf.get_section(sec_idx)
+                                print(f"0x{reloc['r_offset']:08x}   {get_reloc_type(reloc_type):<14}   B(S)={sec.name}({sec_addrs[sec.name]:08x}) + S={sym_value:08x} A={addend:08x} {name}")
+                                
+                                # of the four relocation types used, this is the only one which needs handling at run-time
+                                if reloc_type == 2:
+                                    relocations.append((reloc_type, reloc['r_offset'], sym_value, addend))
                         except Exception as e:
                             print(f"0x{reloc['r_offset']:08x}   {get_reloc_type(reloc_type):<14}   UNKNOWN_SYMBOL_{sym_idx} (error: {str(e)})")
+                            traceback.print_exc()
                             sys.exit(4)
         
         # bin data

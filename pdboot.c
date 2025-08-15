@@ -223,16 +223,6 @@ fail:
 int _entrypoint_(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg);
 int eventHandlerShim(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
 {
-    if (arg >= 1)
-    {
-        // avoid using a string, since those don't seem to load correctly
-        // in a .pdb
-        char msg[4];
-        msg[0] = '!';
-        msg[1] = '\0';
-        playdate->system->logToConsole(msg);
-        return 0;
-    }
     if (event != kEventInit) return 0;
     
     playdate->system->logToConsole(NAME_AND_VERSION "\n");
@@ -240,12 +230,12 @@ int eventHandlerShim(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
     playdate->system->setUpdateCallback(update, NULL);
     wait();
     
-    if (arg >= 1)
+    if (arg >= 2)
     {
         playdate->system->logToConsole("depth limit exceeded, so stopping things here.");
         return 0;
     }
-    arg+=2;
+    arg++;
     
     void* lr = __builtin_frame_address(0);
     if (event != kEventInit) return 0;
@@ -341,10 +331,6 @@ __attribute__((naked))
 int _entrypoint_(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
 {
     asm volatile (
-        "cmp r2, #1"$
-        "itt eq"$              // If-Then block (Thumb-2)
-        "moveq r0, r2"$        // Conditional move
-        "bxeq lr"$             // Conditional return
         "ldr r3, =eventHandlerShim"$
         "bx r3"$
     );
