@@ -1,12 +1,14 @@
 #include <string.h>
 
+#include "pdboot.h"
+
 #ifndef APPNAME
     #define APPNAME "app@.pdb"
 #endif
 
 #define NAME_AND_VERSION "PDBoot v1.0"
-#define PDB_VERSION 1
-#define PDB_MAGIC "\xAAPDBoot\x01"
+#define PDB_VERSION_MAJOR 1
+#define PDB_VERSION_MINOR 0
 
 #include "pd_api.h"
 
@@ -102,18 +104,43 @@ void read_byte_to_msg(char* msg, void* b)
     msg[2] = 0;
 }
 
+__boot __attribute__((naked))
+void hard_jump_to_entrypoint(
+    // r0-r3
+    PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg, void* regs
+)
+{
+    __asm__ volatile (
+        "ldr r4, [r3], #4"$
+        "ldr r5, [r3], #4"$
+        "ldr r6, [r3], #4"$
+        "ldr r7, [r3], #4"$
+        "ldr r8, [r3], #4"$
+        "ldr r9, [r3], #4"$
+        "ldr r10, [r3], #4"$
+        "ldr r11, [r3], #4"$
+        "ldr r12, [r3], #4"$
+        "ldr lr, [r3], #4"$
+        "ldr sp, [r3], #4"$
+        "ldr r3, [r3]"$
+        "bx     r3"$ // jump to entrypoint
+    );
+}
+
 __boot static 
-int bootstrap(
+void bootstrap(
     // r0-r3
     PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg, void* base_addr,
         
     // stack-allocated args
-    char* buff, size_t size, entrypoint_t entrypoint, wait_t wait
+    char* buff, size_t size, wait_t wait,
+    pdboot_data_t* data
 )
 {
     char msg[9];
     
-    void* dat = (void*)((uintptr_t)entrypoint & ~1);
+    void* lr = data->regs[9];
+    void* dat = (void*)((uintptr_t)lr & ~1);
     for (size_t i = 0; i < 8; ++i)
     {
         read_byte_to_msg(msg, dat + 0);
@@ -155,7 +182,7 @@ int bootstrap(
     playdate->system->logToConsole(msg);
     wait();
     
-    dat = (void*)((uintptr_t)entrypoint & ~1);
+    dat = (void*)((uintptr_t)lr & ~1);
     for (size_t i = 0; i < 8; ++i)
     {
         read_byte_to_msg(msg, dat + 0);
@@ -166,8 +193,8 @@ int bootstrap(
         dat += 4;
     }
     wait();
-    
-    return entrypoint(playdate, event, arg);
+
+    hard_jump_to_entrypoint(playdate, event, arg, data->regs);
 }
 
 static
@@ -220,14 +247,21 @@ fail:
     return NULL;
 }
 
+// regs r4-r12
+static void* regs[11];
+
 int _entrypoint_(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg);
-int eventHandlerShim(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
+int pdboot_main(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
 {
+    void* fp = regs[8];
+    void* lr = regs[9];
+    void* sp = regs[10];
+    
     if (event != kEventInit) return 0;
     
     playdate->system->logToConsole(NAME_AND_VERSION "\n");
     playdate->system->logToConsole("PDBoot entrypoint: %p\n", &_entrypoint_);
-    playdate->system->setUpdateCallback(update, NULL);
+
     wait();
     
     if (arg >= 2)
@@ -237,12 +271,11 @@ int eventHandlerShim(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
     }
     arg++;
     
-    void* lr = __builtin_frame_address(0);
     if (event != kEventInit) return 0;
     
     uintptr_t base_addr = get_base_addr();
     
-    playdate->system->logToConsole("LR: %p\nBase Address: %x\n", lr, base_addr);
+    playdate->system->logToConsole("LR: %p\nSP: %p\nFP: %p\nBase Address: %x\n", lr, sp, fp, base_addr);
     
     int rev = get_rev(base_addr);
     
@@ -265,6 +298,19 @@ int eventHandlerShim(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
     // copy bootstrap to safe-execute region.
     // (It just so happens that the frame buffer itself is safe to execute from.)
     uint8_t* bs_region = playdate->graphics->getFrame();
+    
+    pdboot_data_t* data = (void*)bs_region;
+    bs_region += sizeof(*data);
+    strcpy(data->magic, PDBOOT_MAGIC);
+    strcpy(data->name_and_version, NAME_AND_VERSION);
+    data->version_major = PDB_VERSION_MAJOR;
+    data->version_minor = PDB_VERSION_MINOR;
+    
+    memcpy(data->regs, regs, sizeof(data->regs));
+    data->entrypoint = &_entrypoint_;
+    
+    // align % 2
+    while ((uintptr_t)bs_region % 2) ++bs_region;
     
     playdate->system->logToConsole("Copying shim to %p", bs_region);
     
@@ -308,22 +354,26 @@ int eventHandlerShim(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
         return 0;
     }
     
-    int (*bootstrap_shim)(
+    void (*bootstrap_shim)(
         // r0-r3
         PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg, void* base_addr,
         
         // stack-allocated args
-        char* buff, size_t size, entrypoint_t entrypoint, wait_t wait
+        char* buff, size_t size, wait_t wait,
+        void* data
     ) = (void*)((uintptr_t)(void*)&bootstrap - (uintptr_t)(void*)&__boot_start__ + (uintptr_t)(void*)bs_region);
     
-    // this MUST tail-call.
-    return bootstrap_shim(
+
+    // (note: doesn't return here)
+    bootstrap_shim(
         playdate, event, arg, (void*)base_addr,
-        buff, size, &_entrypoint_, (void*)((uintptr_t)(void*)&wait - (uintptr_t)(void*)&__boot_start__ + (uintptr_t)(void*)bs_region)
+        buff, size, (void*)((uintptr_t)(void*)&wait - (uintptr_t)(void*)&__boot_start__ + (uintptr_t)(void*)bs_region),
+        data
     );
+    return 0;
 }
 
-// very short entrypoint function that pre-empts the eventHandlerShim.
+// very short entrypoint function that pre-empts pdboot_main
 // This must be located at exactly the segment start, so that it aligns with the
 // entrypoint in the pdb
 __attribute__((section(".entry")))
@@ -331,7 +381,19 @@ __attribute__((naked))
 int _entrypoint_(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
 {
     asm volatile (
-        "ldr r3, =eventHandlerShim"$
+        "ldr r3, =regs"$
+        "str r4, [r3], #4"$
+        "str r5, [r3], #4"$
+        "str r6, [r3], #4"$
+        "str r7, [r3], #4"$
+        "str r8, [r3], #4"$
+        "str r9, [r3], #4"$
+        "str r10, [r3], #4"$
+        "str r11, [r3], #4"$
+        "str r12, [r3], #4"$
+        "str lr, [r3], #4"$
+        "str sp, [r3], #4"$
+        "ldr r3, =pdboot_main"$
         "bx r3"$
     );
 }
