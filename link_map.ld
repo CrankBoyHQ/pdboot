@@ -6,13 +6,14 @@ SECTIONS
 	.text :
 	{        	
 		__text_start__ = .;
-		
-		*(.entry)
-		
 		__boot_start__ = .;
 		
+		*(.entry)
+
 		*(.boot)
-		
+
+		__boot_end__ = .;
+
 		*(.text)
 		*(.text.*)
         

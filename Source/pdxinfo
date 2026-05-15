@@ -1,6 +1,6 @@
 name=PDBoot
 author=NaOH (Sodium Hydroxide)
-description=A simple shim that launches another .elf
+description=A simple shim that launches another .bin
 bundleID=app.crankboyhq.pdboot
-version=1.0.0
-buildNumber=1
+version=2.0.0
+buildNumber=2

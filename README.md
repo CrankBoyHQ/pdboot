@@ -1,40 +1,91 @@
 # PDBoot
 
-A simple boot shim that merely launches another playdate application. This can be used as part of, for example, a self-updater.
+A boot shim that launches another Playdate C application by loading a stock `pdex.bin` directly.
 
 ## Limitations
 
-- Only works with Pure-C playdate games. Cannot load Lua games.
-- The launched playdate application must be specially compiled, and built separately for rev A and rev B devices.
-- Heap size must be specified in advance. This forces a limit on the size of the program to be loaded.
+- Only Pure-C Playdate games. Lua is not yet supported (needs more understanding of `.pdz` format).
+- Heap size must be specified on the pdboot build at build time (`HEAP_SIZE` in the pdboot Makefile), which fixes the maximum size of the loaded program.
+- Encrypted `pdex.bin` (such as for Catalog builds) are not supported.
 
-## How to use:
+## How to use
 
-First, build pdboot:
+### Building your payload
+
+For the most part, you can build your playdate application like normal. However, you'll need to add a special routine as an entrypoint, and use a custom `link_map.ld` linker script to ensure that your entrypoint aligns with PDBoot's.
+
+Include this in the same file as your `EventHandler` in C:
+
+```
+#include "pd_api.h"
+
+#define PDBOOT_MAIN
+#include "pdboot.h"
+```
+
+And your `link_map.ld` should have `ENTRY(_entrypoint_)` as the entrypoint, and the very first symbol at offset 0 should be said `_entrypoint_` function. See [testapp](./testapp/link_map.ld) as an example.
+
+### PDBoot
+
+Build PDBoot:
 
 ```bash
 make -j 4
 ```
 
-(Note: replace MyGame.pdx with your actual pdx)
+Rename your normal `pdex.bin` to something else, like `app.bin`. Then, drop PDBoot's `pdex.bin` into your target pdx, and place your payload(s) at the matching locations.
 
-```bash
-# create .pdb for rev A:
-python3.11 elfboiler/elfboiler.py Source/pdex.elf MyGame.pdx/appA.pdb 0x60000000
+Add a plain-text `pdboot` file alongside the binaries that lists candidate payload paths, one per line. PDBoot tries each in order and launches the first one that opens. If no `pdboot` file is present, PDBoot defaults to just checking for a file called "`app.bin`" (in pdx or data dir).
 
-# create .pdb for rev B:
-python3.11 elfboiler/elfboiler.py Source/pdex.elf MyGame.pdx/appB.pdb 0x90000000
+`pdboot` example:
 
-# replace .bin with pdboot:
-cp path/to/pdboot/PDBoot.pdx/pdex.bin MyGame.pdx/pdex.bin
+```
+# blank lines and lines starting with '#' are ignored.
+pdx:./app.bin
+data:./app.bin
+/Shared/.pdboot/app.bin
 ```
 
-If you then run `MyGame.pdx` on a playdate device, it should launch via pdboot. You can check the output log in the simulator to confirm; pdboot should print some messages.
+Path prefixes select which filesystem `playdate->file->open` searches:
 
-## Troubleshooting
+- `pdx:PATH`: `kFileRead` (pdx bundle only)
+- `data:PATH`: `kFileReadData` (per-game data dir only)
+- anything else: `kFileRead | kFileReadData` (search both)
 
-If `elfboiler.py` is failing, most likely you are using a type of relocation symbol that hasn't been implemented yet. You can try implementing it based on the documentation linked in the output of `elfboiler.py`, or you can change compile settings. Try using gcc, and don't use `-fPIC` (position-independent code).
+Launching PDboot's `pdex.bin` should then print some diagnostic information out to the console and then launch your `app.bin`.
 
-## Extra features:
+## Detecting PDBoot from the loaded app
 
-If you include `pdboot.h`, you can access some data about pdboot, which is stored at the address returned by `playdate->graphics->getFrame()`. If the `magic` field matches the string in the header, then that means the game has been launched by pdboot. Otherwise, pdboot was not involved in launching the game.
+Include `pdboot.h` to read the boot metadata stashed at `playdate->graphics->getFrame()`:
+
+```c
+#include "pdboot.h"
+
+const pdboot_data_t* d = (const pdboot_data_t*)(void*)playdate->graphics->getFrame();
+if (memcmp(d->magic, PDBOOT_MAGIC, 8) == 0) {
+    // launched by pdboot. Read d->name_and_version, d->version_major/minor, etc.
+}
+```
+
+## Test app
+
+In this repo, `testapp/` is a minimal C payload that logs `hello from payload` in `kEventInit`, detects PDBoot via the framebuffer magic, and renders some text because why not.
+
+```bash
+# build PDBoot
+make -j 4
+
+# build test payload
+(cd testapp && make -j 4)
+
+# add test payload to PDBoot.pdx
+cp testapp/TestPayload.pdx/pdex.bin PDBoot.pdx/app.bin
+
+# (then sideload PDBoot.pdx onto a device and launch it)
+```
+
+If you look at the console, you should see messages from `PDBoot` ending with `[PDBoot] handing off...` and then the test app's output should follow.
+
+## Dependencies
+
+- `uzlib/` ([source](https://github.com/pfalcon/uzlib)) (ZLib license)

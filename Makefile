@@ -12,7 +12,7 @@ ifeq ($(SDK),)
 	$(error SDK path not found; set ENV value PLAYDATE_SDK_PATH)
 endif
 
-override SRC = pdboot.c
+override SRC = pdboot.c uzlib/tinflate.c uzlib/tinfzlib.c
 
 UDEFS = -DHEAP_SIZE=$(HEAP_SIZE)
 
@@ -33,32 +33,3 @@ include $(SDK)/C_API/buildsupport/common.mk
 PDCFLAGS += --quiet
 
 DYLIB_FLAGS += -DHEAP_SIZE=$(HEAP_SIZE)
-
-# test apps
-
-app.elf: test.o setup.o $(LDSCRIPT)
-	$(CC) $^ -nostartfiles -MD -MP -MF  $(MCFLAGS) -T$(LDSCRIPT) -Wl,--cref,--gc-sections,--no-warn-mismatch,--emit-relocs -o $@
-	
-test.o: test.c
-	$(CC) -c $(MCFLAGS) $(DDEFS) $(INCDIR) $< -o $@
-
-setup.o: $(SDK)/C_API/buildsupport/setup.c
-	$(CC) -c $(MCFLAGS) $(DDEFS) $(INCDIR) $< -o $@
-
-Source/appB.pdb: appB.elf
-	arm-none-eabi-objcopy \
-    --image-base=0x90000000 \
-    --input-target=elf32-littlearm \
-    --output-target=binary \
-    $@ \
-    $^
-	
-appB.elf: Source/pdex.elf
-	arm-none-eabi-ld \
-	-T relocateB.ld -o \
-    $@ \
-    $^
-	
-# clean-test, cleans the everything from app.elf to appB.elf
-clean-test:
-	rm -f app.elf test.o setup.o Source/appB.pdb appB.o appB.elf

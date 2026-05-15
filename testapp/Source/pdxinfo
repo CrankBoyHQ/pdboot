@@ -1,0 +1,6 @@
+name=PDBoot2 Test Payload
+author=NaOH (Sodium Hydroxide)
+description=Minimal C app for verifying PDBoot2 end-to-end
+bundleID=app.crankboyhq.pdboot2.testpayload
+version=1.0.0
+buildNumber=1

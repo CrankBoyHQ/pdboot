@@ -1,0 +1,9 @@
+# PDBoot config — one app path per line, tried in order
+# until a matching file is found.
+# Optional prefix:  pdx: search the pdx bundle only
+#                  data: search the per-game data dir only
+#           (no prefix): search both
+
+pdx:./app.bin
+data:./app.bin
+/Shared/.pdboot/app.bin
