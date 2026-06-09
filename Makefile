@@ -12,7 +12,7 @@ ifeq ($(SDK),)
 	$(error SDK path not found; set ENV value PLAYDATE_SDK_PATH)
 endif
 
-override SRC = pdboot.c uzlib/tinflate.c uzlib/tinfzlib.c
+override SRC = pdboot.c uzlib/tinflate.c uzlib/tinfzlib.c uzlib/adler32.c uzlib/crc32.c
 
 UDEFS = -DHEAP_SIZE=$(HEAP_SIZE)
 
